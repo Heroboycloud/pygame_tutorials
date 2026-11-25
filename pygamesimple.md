@@ -9,7 +9,7 @@ Here is the mental model you need to unlock it:
     *   **Draw** everything in its new position on the fresh page.
     *   **Flip** the page so the user sees it.
 
-If you forget to erase the screen, you get smudges (trails). If you forget to flip, the user sees nothing.
+#If you forget to erase the screen, you get smudges (trails). If you forget to flip, the user sees nothing.
 
 ---
 
