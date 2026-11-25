@@ -20,13 +20,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Install system dependencies
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             pandoc \
@@ -34,51 +30,53 @@ jobs:
             texlive-fonts-recommended \
             texlive-latex-recommended \
             texlive-latex-extra \
-            lmodern \
+            fonts-dejavu-core \
+            fonts-dejavu-extra \
             librsvg2-bin
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install markdown-filter
-
       - name: Collect and merge Markdown files
-        id: collect
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import os, glob
+          python3 - <<'PY'
+          import os
           from pathlib import Path
+          from datetime import datetime, timezone
 
-          # Ignore common non-content paths
           ignore_dirs = {'.git', 'node_modules', 'vendor', 'dist', 'build', '.github'}
 
           md_files = []
           for path in Path('.').rglob('*.md'):
               if any(part in ignore_dirs for part in path.parts):
                   continue
+              if path.name == 'combined.md':
+                  continue
               md_files.append(path)
 
-          md_files.sort(key=lambda p: str(p))
+          md_files.sort(key=lambda p: str(p).lower())
           print(f"Found {len(md_files)} markdown file(s)")
 
+          if not md_files:
+              print("ERROR: no markdown files found")
+              raise SystemExit(1)
+
+          stamp = datetime.now(timezone.utc).strftime('%Y-%m-%d')
           out = Path('combined.md')
           with out.open('w', encoding='utf-8') as f:
-              # Title page
               f.write('# Repository Documentation\n\n')
-              f.write(f'_Generated: {os.popen("date -u +%Y-%m-%d").read().strip()}_\n\n')
-              f.write('---\n\n')
+              f.write(f'_Generated: {stamp}_\n\n')
+              f.write('---\n')
 
-              for i, md in enumerate(md_files):
+              for md in md_files:
                   print(f"Processing: {md}")
-                  f.write(f'\n\n# {md.name}\n\n')
                   try:
                       content = md.read_text(encoding='utf-8')
-                  except Exception as e:
-                      print(f"  Skipping {md}: {e}")
-                      continue
+                  except UnicodeDecodeError:
+                      content = md.read_text(encoding='utf-8', errors='replace')
+                      print(f"  (replaced non-UTF8 bytes in {md})")
+
+                  f.write(f'\n\n# File: {md.as_posix()}\n\n')
                   f.write(content)
-                  f.write('\n\n---\n\n')
+                  f.write('\n\n---\n')
 
           print(f"Wrote combined.md ({out.stat().st_size} bytes)")
           PY
@@ -106,15 +104,18 @@ jobs:
 
       - name: Verify PDF was created
         run: |
-          if [ ! -f documentation.pdf ]; then
-            echo "ERROR: documentation.pdf was not created"
+          set -euo pipefail
+          if [ ! -s documentation.pdf ]; then
+            echo "ERROR: documentation.pdf is missing or empty"
             exit 1
           fi
           ls -lh documentation.pdf
+          file documentation.pdf
 
       - name: Generate release tag
         id: tag
         run: |
+          set -euo pipefail
           echo "tag=v$(date -u +'%Y.%m.%d-%H%M%S')" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_OUTPUT"
 
@@ -127,9 +128,9 @@ jobs:
           body: |
             Auto-generated PDF from Markdown sources.
 
-            **Build:** ${{ github.run_number }}
-            **Commit:** `${{ github.sha }}`
-            **Date:** ${{ steps.tag.outputs.date }}
+            - **Build:** ${{ github.run_number }}
+            - **Commit:** `${{ github.sha }}`
+            - **Date:** ${{ steps.tag.outputs.date }}
           files: documentation.pdf
           draft: false
           prerelease: false
@@ -147,15 +148,16 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
           REPO: ${{ github.repository }}
           REF: ${{ github.ref_name }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
 
-          if [ "$STATUS" = "success" ]; then
-            TITLE="✅ PDF Build Succeeded"
+          if [ "${STATUS}" = "success" ]; then
+            TITLE="PDF Build Succeeded"
             PRIORITY="default"
             TAGS="white_check_mark,book"
           else
-            TITLE="❌ PDF Build Failed"
+            TITLE="PDF Build Failed"
             PRIORITY="high"
             TAGS="x,warning"
           fi
@@ -164,19 +166,21 @@ jobs:
             BODY="Repo: ${REPO} (${REF})
           Tag: ${TAG}
           Release: ${RELEASE_URL}
-          Run: https://github.com/${REPO}/actions/runs/${{ github.run_id }}"
+          Run: ${RUN_URL}"
+            CLICK="${RELEASE_URL}"
           else
             BODY="Repo: ${REPO} (${REF})
           Status: ${STATUS}
-          Run: https://github.com/${REPO}/actions/runs/${{ github.run_id }}"
+          Run: ${RUN_URL}"
+            CLICK="${RUN_URL}"
           fi
 
-          # ntfy accepts headers - avoid leaking newlines into headers
+          echo "Sending ntfy notification..."
           curl -sS --fail-with-body \
             -H "Title: ${TITLE}" \
             -H "Priority: ${PRIORITY}" \
             -H "Tags: ${TAGS}" \
-            -H "Click: ${RELEASE_URL:-https://github.com/${REPO}/actions/runs/${{ github.run_id }}}" \
-            -H "Actions: view, Open Release, ${RELEASE_URL:-https://github.com/${REPO}/actions/runs/${{ github.run_id }}}, clear=true" \
-            -d "${BODY}" \
-            "https://ntfy.sh/${NTFY_TOPIC}" || echo "ntfy notification failed (non-fatal)"
+            -H "Click: ${CLICK}" \
+            --data-binary "${BODY}" \
+            "https://ntfy.sh/${NTFY_TOPIC}" \
+            || echo "ntfy notification failed (non-fatal)"
