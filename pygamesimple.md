@@ -1,4 +1,3 @@
-I completely understand your frustration. Many tutorials jump straight into complex math or object-oriented programming before you even know how to make a window appear.
 
 Let's throw away the textbook definition. Instead, imagine **Pygame is like making a flipbook animation.**
 

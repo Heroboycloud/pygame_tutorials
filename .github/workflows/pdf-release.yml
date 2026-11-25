@@ -166,14 +166,14 @@ jobs:
 
           if [ -n "${RELEASE_URL:-}" ]; then
             BODY="Repo: ${REPO} (${REF})
-          Tag: ${TAG}
-          Release: ${RELEASE_URL}
-          Run: ${RUN_URL}"
+Tag: ${TAG}
+Release: ${RELEASE_URL}
+Run: ${RUN_URL}"
             CLICK="${RELEASE_URL}"
           else
             BODY="Repo: ${REPO} (${REF})
-          Status: ${STATUS}
-          Run: ${RUN_URL}"
+Status: ${STATUS}
+Run: ${RUN_URL}"
             CLICK="${RUN_URL}"
           fi
 
