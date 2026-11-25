@@ -5,7 +5,7 @@ on:
     branches: [main, master]
     paths:
       - '**.md'
-      - '.github/workflows/markdown-to-pdf.yml'
+      - '.github/workflows/**.yml'
   workflow_dispatch:
 
 permissions:
