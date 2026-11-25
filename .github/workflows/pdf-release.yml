@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             pandoc \
             texlive-xetex \
             texlive-fonts-recommended \
@@ -33,12 +33,14 @@ jobs:
             fonts-dejavu-core \
             fonts-dejavu-extra \
             librsvg2-bin
+          pandoc --version | head -n1
+          which xelatex
 
       - name: Collect and merge Markdown files
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os
+          import sys
           from pathlib import Path
           from datetime import datetime, timezone
 
@@ -57,7 +59,7 @@ jobs:
 
           if not md_files:
               print("ERROR: no markdown files found")
-              raise SystemExit(1)
+              sys.exit(1)
 
           stamp = datetime.now(timezone.utc).strftime('%Y-%m-%d')
           out = Path('combined.md')
@@ -119,7 +121,7 @@ jobs:
           echo "tag=v$(date -u +'%Y.%m.%d-%H%M%S')" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_OUTPUT"
 
-      - name: Create or update GitHub Release
+      - name: Create GitHub Release
         id: release
         uses: softprops/action-gh-release@v2
         with:
