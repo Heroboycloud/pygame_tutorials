@@ -1,5 +1,7 @@
 Tkinter for PyGame Programmers - The GUI Sidekick
 
+Explaining pygame
+
 Tkinter is Python's built-in GUI toolkit. If PyGame is like a game engine/rendering library, Tkinter is like a form builder. Let me teach you the Tkinter way by comparing it to PyGame concepts.
 
 The Big Difference: Event-Driven vs Game Loop
