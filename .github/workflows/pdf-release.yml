@@ -25,15 +25,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            pandoc \
-            texlive-xetex \
-            texlive-fonts-recommended \
-            texlive-latex-recommended \
-            texlive-latex-extra \
-            fonts-dejavu-core \
-            fonts-dejavu-extra \
-            librsvg2-bin
+          sudo apt-get install -y pandoc weasyprint
 
       - name: Create Python merge script
         run: |
@@ -75,25 +67,18 @@ jobs:
       - name: Merge Markdown files
         run: python3 merge_md.py
 
-      - name: Convert to PDF with Pandoc
+      - name: Convert Markdown to HTML
         run: |
           pandoc combined.md \
-            -o documentation.pdf \
-            --from gfm \
-            --pdf-engine=xelatex \
+            -o documentation.html \
+            --standalone \
+            --self-contained \
             --toc \
-            --toc-depth=3 \
-            --number-sections \
-            -V geometry:margin=2cm \
-            -V mainfont="DejaVu Sans" \
-            -V monofont="DejaVu Sans Mono" \
-            -V fontsize=10pt \
-            -V colorlinks=true \
-            -V linkcolor=blue \
-            -V urlcolor=blue \
-            -V toccolor=blue \
-            --highlight-style=tango \
-            --standalone
+            --metadata title="Repository Documentation"
+
+      - name: Convert HTML to PDF with WeasyPrint
+        run: |
+          weasyprint documentation.html documentation.pdf
 
       - name: Verify PDF
         run: |
