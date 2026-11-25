@@ -2,7 +2,9 @@ name: Build PDF from Markdown & Release
 
 on:
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
     paths:
       - '**.md'
       - '.github/workflows/**.yml'
@@ -22,7 +24,6 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          set -euo pipefail
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             pandoc \
@@ -33,20 +34,17 @@ jobs:
             fonts-dejavu-core \
             fonts-dejavu-extra \
             librsvg2-bin
-          pandoc --version | head -n1
-          which xelatex
 
-      - name: Collect and merge Markdown files
+      - name: Create Python merge script
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
+          cat << 'PYEOF' > merge_md.py
           import sys
           from pathlib import Path
           from datetime import datetime, timezone
 
           ignore_dirs = {'.git', 'node_modules', 'vendor', 'dist', 'build', '.github'}
-
           md_files = []
+
           for path in Path('.').rglob('*.md'):
               if any(part in ignore_dirs for part in path.parts):
                   continue
@@ -65,27 +63,20 @@ jobs:
           out = Path('combined.md')
           with out.open('w', encoding='utf-8') as f:
               f.write('# Repository Documentation\n\n')
-              f.write(f'_Generated: {stamp}_\n\n')
-              f.write('---\n')
-
+              f.write(f'_Generated: {stamp}_\n\n---\n')
               for md in md_files:
-                  print(f"Processing: {md}")
-                  try:
-                      content = md.read_text(encoding='utf-8')
-                  except UnicodeDecodeError:
-                      content = md.read_text(encoding='utf-8', errors='replace')
-                      print(f"  (replaced non-UTF8 bytes in {md})")
-
+                  content = md.read_text(encoding='utf-8', errors='replace')
                   f.write(f'\n\n# File: {md.as_posix()}\n\n')
                   f.write(content)
                   f.write('\n\n---\n')
+          print(f"Wrote combined.md")
+          PYEOF
 
-          print(f"Wrote combined.md ({out.stat().st_size} bytes)")
-          PY
+      - name: Merge Markdown files
+        run: python3 merge_md.py
 
       - name: Convert to PDF with Pandoc
         run: |
-          set -euo pipefail
           pandoc combined.md \
             -o documentation.pdf \
             --from gfm \
@@ -104,20 +95,14 @@ jobs:
             --highlight-style=tango \
             --standalone
 
-      - name: Verify PDF was created
+      - name: Verify PDF
         run: |
-          set -euo pipefail
-          if [ ! -s documentation.pdf ]; then
-            echo "ERROR: documentation.pdf is missing or empty"
-            exit 1
-          fi
           ls -lh documentation.pdf
           file documentation.pdf
 
       - name: Generate release tag
         id: tag
         run: |
-          set -euo pipefail
           echo "tag=v$(date -u +'%Y.%m.%d-%H%M%S')" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_OUTPUT"
 
@@ -129,7 +114,6 @@ jobs:
           name: "Documentation PDF ${{ steps.tag.outputs.tag }}"
           body: |
             Auto-generated PDF from Markdown sources.
-
             - **Build:** ${{ github.run_number }}
             - **Commit:** `${{ github.sha }}`
             - **Date:** ${{ steps.tag.outputs.date }}
@@ -137,7 +121,6 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
-          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -152,9 +135,7 @@ jobs:
           REF: ${{ github.ref_name }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          set -uo pipefail
-
-          if [ "${STATUS}" = "success" ]; then
+          if [ "$STATUS" = "success" ]; then
             TITLE="PDF Build Succeeded"
             PRIORITY="default"
             TAGS="white_check_mark,book"
@@ -164,25 +145,12 @@ jobs:
             TAGS="x,warning"
           fi
 
-          if [ -n "${RELEASE_URL:-}" ]; then
-            BODY="Repo: ${REPO} (${REF})
-Tag: ${TAG}
-Release: ${RELEASE_URL}
-Run: ${RUN_URL}"
-            CLICK="${RELEASE_URL}"
+          if [ -n "$RELEASE_URL" ]; then
+            BODY="Repo: $REPO ($REF) | Tag: $TAG | Release: $RELEASE_URL"
+            CLICK="$RELEASE_URL"
           else
-            BODY="Repo: ${REPO} (${REF})
-Status: ${STATUS}
-Run: ${RUN_URL}"
-            CLICK="${RUN_URL}"
+            BODY="Repo: $REPO ($REF) | Status: $STATUS | Run: $RUN_URL"
+            CLICK="$RUN_URL"
           fi
 
-          echo "Sending ntfy notification..."
-          curl -sS --fail-with-body \
-            -H "Title: ${TITLE}" \
-            -H "Priority: ${PRIORITY}" \
-            -H "Tags: ${TAGS}" \
-            -H "Click: ${CLICK}" \
-            --data-binary "${BODY}" \
-            "https://ntfy.sh/${NTFY_TOPIC}" \
-            || echo "ntfy notification failed (non-fatal)"
+          curl -sS -H "Title: $TITLE" -H "Priority: $PRIORITY" -H "Tags: $TAGS" -H "Click: $CLICK" --data-binary "$BODY" "https://ntfy.sh/$NTFY_TOPIC" || true
